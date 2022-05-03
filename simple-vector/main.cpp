@@ -1,163 +1,66 @@
-#include "simple_vector.h"
-
 #include <cassert>
 #include <iostream>
 #include <numeric>
-#include <string>
+
+#include "simple_vector.h"
+// Tests
+#include "tests.h"
 
 using namespace std;
 
-class X {
-public:
-    X()
-        : X(5) {
-    }
-    X(size_t num)
-        : x_(num) {
-    }
-    X(const X& other) = delete;
-    X& operator=(const X& other) = delete;
-    X(X&& other) {
-        x_ = exchange(other.x_, 0);
-    }
-    X& operator=(X&& other) {
-        x_ = exchange(other.x_, 0);
-        return *this;
-    }
-    size_t GetX() const {
-        return x_;
-    }
+/*
+Задание
+Улучшите свой вектор, добавив возможность перемещения.
+Используйте предлагаемые тесты и допишите свои, чтобы удостовериться,
+что все нужные методы поддерживают не только копирование, но и перемещение.
+Используйте знания, полученные в последних уроках, и разберитесь,
+какие методы добавить в уже существующие классы, чтобы поддержать возможность перемещения.
+--Подсказка
+Следуйте за ошибками компиляции. Они выведут вас на верную дорогу.
+*/
 
-private:
-    size_t x_;
+
+/*
+Задание
+Reserve задает ёмкость вектора. Этот метод повышает эффективность кода в случае,
+когда пользователь заранее знает хотя бы приблизительное количество элементов в векторе.
+Reserve сразу выделяет нужное количество памяти.
+При добавлении новых элементов в вектор копирование будет происходить или значительно реже или совсем не будет.
+Если new_capacity больше текущей capacity, память должна быть перевыделена,
+а элементы вектора скопированы в новый отрезок памяти.
+Кроме этого реализуйте возможность вызвать конструктор SimpleVector,
+который будет сразу резервировать нужное количество памяти.
+--Подсказка
+Не забудьте обновить указатель на начало вектора и текущую ёмкость.
+Для реализации конструктора с резервированием вам понадобится дополнительный класс-обёртка,
+чтобы компилятор мог разобраться и вызвать правильный конструктор.
+Этот конструктор должен принимать по значению объект этого класса-обёртки.
+Тогда функция (не метод!) будет иметь следующую сигнатуру:
+ReserveProxyObj Reserve(size_t capacity_to_reserve) {
+    return ReserveProxyObj(capacity_to_reserve);
 };
-
-SimpleVector<int> GenerateVector(size_t size) {
-    SimpleVector<int> v(size);
-    iota(v.begin(), v.end(), 1);
-    return v;
-}
-
-void TestTemporaryObjConstructor() {
-    const size_t size = 1000000;
-    cout << "Test with temporary object, copy elision"s << endl;
-    SimpleVector<int> moved_vector(GenerateVector(size));
-    assert(moved_vector.GetSize() == size);
-    cout << "Done!"s << endl << endl;
-}
-
-void TestTemporaryObjOperator() {
-    const size_t size = 1000000;
-    cout << "Test with temporary object, operator="s << endl;
-    SimpleVector<int> moved_vector;
-    assert(moved_vector.GetSize() == 0);
-    moved_vector = GenerateVector(size);
-    assert(moved_vector.GetSize() == size);
-    cout << "Done!"s << endl << endl;
-}
-
-void TestNamedMoveConstructor() {
-    const size_t size = 1000000;
-    cout << "Test with named object, move constructor"s << endl;
-    SimpleVector<int> vector_to_move(GenerateVector(size));
-    assert(vector_to_move.GetSize() == size);
-
-    SimpleVector<int> moved_vector(move(vector_to_move));
-    assert(moved_vector.GetSize() == size);
-    assert(vector_to_move.GetSize() == 0);
-    cout << "Done!"s << endl << endl;
-}
-
-void TestNamedMoveOperator() {
-    const size_t size = 1000000;
-    cout << "Test with named object, operator="s << endl;
-    SimpleVector<int> vector_to_move(GenerateVector(size));
-    assert(vector_to_move.GetSize() == size);
-
-    SimpleVector<int> moved_vector = move(vector_to_move);
-    assert(moved_vector.GetSize() == size);
-    assert(vector_to_move.GetSize() == 0);
-    cout << "Done!"s << endl << endl;
-}
-
-void TestNoncopiableMoveConstructor() {
-    const size_t size = 5;
-    cout << "Test noncopiable object, move constructor"s << endl;
-    SimpleVector<X> vector_to_move;
-    for (size_t i = 0; i < size; ++i) {
-        vector_to_move.PushBack(X(i));
-    }
-
-    SimpleVector<X> moved_vector = move(vector_to_move);
-    assert(moved_vector.GetSize() == size);
-    assert(vector_to_move.GetSize() == 0);
-
-    for (size_t i = 0; i < size; ++i) {
-        assert(moved_vector[i].GetX() == i);
-    }
-    cout << "Done!"s << endl << endl;
-}
-
-void TestNoncopiablePushBack() {
-    const size_t size = 5;
-    cout << "Test noncopiable push back"s << endl;
-    SimpleVector<X> v;
-    for (size_t i = 0; i < size; ++i) {
-        v.PushBack(X(i));
-    }
-
-    assert(v.GetSize() == size);
-
-    for (size_t i = 0; i < size; ++i) {
-        assert(v[i].GetX() == i);
-    }
-    cout << "Done!"s << endl << endl;
-}
-
-void TestNoncopiableInsert() {
-    const size_t size = 5;
-    cout << "Test noncopiable insert"s << endl;
-    SimpleVector<X> v;
-    for (size_t i = 0; i < size; ++i) {
-        v.PushBack(X(i));
-    }
-
-    // в начало
-    v.Insert(v.begin(), X(size + 1));
-    assert(v.GetSize() == size + 1);
-    assert(v.begin()->GetX() == size + 1);
-    // в конец
-    v.Insert(v.end(), X(size + 2));
-    assert(v.GetSize() == size + 2);
-    assert((v.end() - 1)->GetX() == size + 2);
-    // в середину
-    v.Insert(v.begin() + 3, X(size + 3));
-    assert(v.GetSize() == size + 3);
-    assert((v.begin() + 3)->GetX() == size + 3);
-    cout << "Done!"s << endl << endl;
-}
-
-void TestNoncopiableErase() {
-    const size_t size = 3;
-    cout << "Test noncopiable erase"s << endl;
-    SimpleVector<X> v;
-    for (size_t i = 0; i < size; ++i) {
-        v.PushBack(X(i));
-    }
-
-    auto it = v.Erase(v.begin());
-    assert(it->GetX() == 1);
-    cout << "Done!"s << endl << endl;
-}
+*/
 
 int main() {
+
+    SetTest1();
+    SetTest2();
+    std::cout << "< OLD TESTS 1 > -OK-" << std::endl << std::endl;
+    TestReserveConstructor();
+    TestReserveMethod();
+    std::cout << "< OLD TESTS 2 > -OK-" << std::endl << std::endl;
+
     TestTemporaryObjConstructor();
     TestTemporaryObjOperator();
     TestNamedMoveConstructor();
     TestNamedMoveOperator();
     TestNoncopiableMoveConstructor();
     TestNoncopiablePushBack();
+
     TestNoncopiableInsert();
+
     TestNoncopiableErase();
+    std::cout << "< NEW TESTS > -OK-" << std::endl << std::endl;
+
     return 0;
 }

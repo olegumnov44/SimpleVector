@@ -1,2 +1,501 @@
-// вставьте сюда ваш код для класса SimpleVector
-// внесите необходимые изменения для поддержки move-семантики
+#pragma once
+
+#include <cassert>
+#include <initializer_list>
+#include <algorithm>
+#include <stdexcept>
+#include <iostream>
+
+#include "array_ptr.h"
+
+
+//Класс-обёртка для создания вектора по функции (не методу!) Reserve
+class ReserveProxyObj {
+public:
+
+    ReserveProxyObj() noexcept = default;
+
+    ReserveProxyObj (size_t capacity_to_reserve)
+        : capacity_to_reserve_(capacity_to_reserve)
+    {}
+
+    size_t GetValue() { return capacity_to_reserve_; }
+
+private:
+    size_t capacity_to_reserve_ = 0;
+};
+
+// Функция Reserve для запуска класса-обёртки
+ReserveProxyObj Reserve(size_t capacity_to_reserve) {
+    return ReserveProxyObj(capacity_to_reserve);
+}
+
+template <typename Type>
+class SimpleVector {
+public:
+    using Iterator = Type*;
+    using ConstIterator = const Type*;
+
+    // Создаёт пустой вектор
+    SimpleVector() noexcept
+        : size_(0)
+        , capacity_(0)
+        , vector_{size_}
+    {}
+
+    // Создаёт вектор из size элементов, инициализированных значением по умолчанию
+    explicit SimpleVector(std::size_t size)
+        : size_(size)
+        , capacity_(size)
+        , vector_{ArrayPtr<Type>{size}}
+    {
+        try {
+            //std::fill(vector_.Get(), vector_.Get() + size_, Type());
+            for (auto it = vector_.Get(); it != vector_.Get() + size_; ++it) {
+                *it = std::move(Type());
+            }
+        }
+        catch (std::bad_alloc&) {
+            std::cerr << "Error: Bad allocation!" << std::endl;
+            throw std::bad_alloc();
+        }
+    }
+
+    // Создаёт вектор из size элементов, инициализированных значением value
+    SimpleVector(size_t size, const Type& value)
+        : size_(size)
+        , capacity_(size)
+        , vector_{ArrayPtr<Type>{size}}
+    {
+        try {
+            //std::fill(vector_.Get(), vector_.Get() + size_, value);
+            for (auto it = vector_.Get(); it != vector_.Get() + size_; ++it) {
+                *it = std::move(value);
+            }
+        }
+            catch (std::bad_alloc&) {
+            std::cerr << "Error: Bad allocation!" << std::endl;
+            throw std::bad_alloc();
+        }
+    }
+
+    // Создаёт вектор из std::initializer_list
+    SimpleVector(std::initializer_list<Type> init)
+        : size_(init.size())
+        , capacity_(init.size())
+        , vector_{ArrayPtr<Type>{size_}}
+    {
+        try {
+            std::copy(init.begin(), init.end(), vector_.Get());
+        }
+          catch (const std::bad_alloc&) {
+          std::cerr << "Error: Bad allocation!" << std::endl;
+          throw std::bad_alloc();
+        }
+    }
+
+    // Создаёт копию другого вектора (конструктор копирования)
+    SimpleVector(const SimpleVector& other)
+        : size_(other.size_)
+        , capacity_(other.capacity_)
+        , vector_{ArrayPtr<Type>{size_}}
+    {
+        assert(*this != other);
+        try
+        {
+            std::copy(other.begin(), other.end(), vector_.Get());
+        }
+        catch (const std::bad_alloc&) {
+            std::cerr << "Error: Bad allocation!" << std::endl;
+            throw std::bad_alloc();
+        }
+    }
+
+    // ПЕРЕМЕЩЕНИЕ
+    // Перемещает вектор в другой вектор (конструктор перемещения)
+    SimpleVector(SimpleVector&& other)
+        : size_(other.size_)
+        , capacity_(other.capacity_)
+        , vector_{ArrayPtr<Type>{size_}}
+    {
+        try
+        {
+            std::move(other.begin(), other.end(), vector_.Get());
+        }
+        catch (const std::bad_alloc&) {
+            std::cerr << "Error: Bad allocation!" << std::endl;
+            throw std::bad_alloc();
+        }
+        other.Clear();
+        other.capacity_ = 0;
+        other.vector_.Delete();
+    }
+
+    // Создаёт пустой вектор c заданной ёмкостью
+    SimpleVector(ReserveProxyObj obj)
+        : size_(0)
+        , capacity_(obj.GetValue())
+        , vector_{size_}
+    {}
+
+    // Оператор присваивания копированием
+    SimpleVector& operator=(const SimpleVector& rhs) {
+        if (*this != rhs) {
+            SimpleVector tmp{rhs};
+            this->swap(tmp);   // copy&swap
+            tmp.Clear();
+            tmp.capacity_ = 0;
+            tmp.vector_.Delete();
+            return *this;
+        }
+        else {
+            throw std::invalid_argument("Invalid argument!");
+        }
+        return *this;
+    }
+
+    // ПЕРЕМЕЩЕНИЕ
+    // Опереатор присваивания перемещением
+    SimpleVector& operator=(SimpleVector&& rhs) {
+        if (*this != rhs) {
+            this->swap(rhs);
+            return *this;
+        }
+        else {
+            throw std::invalid_argument("Invalid argument!");
+        }
+        return *this;
+    }
+
+    // Деструктор
+    ~SimpleVector() { Clear(); }
+
+    // Возвращает количество элементов в массиве
+    std::size_t GetSize() const noexcept {
+        return size_;
+    }
+
+    // Возвращает вместимость массива
+    std::size_t GetCapacity() const noexcept {
+        return capacity_;
+    }
+
+    // Сообщает, пустой ли массив
+    bool IsEmpty() const noexcept {
+        return GetSize() == 0;
+    }
+
+    // Возвращает ссылку на элемент с индексом index
+    Type& operator[](std::size_t index) noexcept {
+        return vector_[index];
+    }
+
+    // Возвращает константную ссылку на элемент с индексом index
+    const Type& operator[](std::size_t index) const noexcept {
+        return const_cast<Type&>(vector_[index]);
+    }
+
+    // Возвращает ссылку на элемент с индексом index
+    // Выбрасывает исключение std::out_of_range, если index >= size
+    Type& At(std::size_t index) {
+        if (index >= size_) {
+            throw std::out_of_range("Error: Out of range!");
+        }
+        return vector_[index];
+    }
+
+    // Возвращает константную ссылку на элемент с индексом index
+    // Выбрасывает исключение std::out_of_range, если index >= size
+    const Type& At(std::size_t index) const {
+        if (index >= size_) {
+            throw std::out_of_range("Error: Out of range!");
+        }
+        return const_cast<Type&>(vector_[index]);
+    }
+
+    // Обнуляет размер массива, не изменяя его вместимость
+    void Clear() noexcept {
+        size_ = 0;
+    }
+
+    // Изменяет размер массива.
+    // При увеличении размера новые элементы получают значение по умолчанию для типа Type
+    void Resize(size_t new_size) {
+        assert(new_size > 0);
+        if (new_size < size_) {
+            //std::fill(vector_.Get() + new_size, vector_.Get() + size_, Type());
+            for (auto it = vector_.Get() + new_size; it != vector_.Get() + size_; ++it) {
+                *it = std::move(Type());
+            }
+            size_ = new_size;
+        }
+        else {
+            if (new_size < capacity_) {
+                //std::fill(vector_.Get() + size_, vector_.Get() + new_size, Type());
+                for (auto it = vector_.Get() + size_; it != vector_.Get() + new_size; ++it) {
+                    *it = std::move(Type());
+                }
+                size_ = new_size;
+            }
+            else {
+                if (new_size >= capacity_) {
+                    size_t new_capacity = new_size * 2;
+                    try {
+                        ArrayPtr<Type> tmp(new_capacity);
+                        std::move(vector_.Get(), vector_.Get() + size_, tmp.Get());
+                        //std::fill(tmp.Get() + size_, tmp.Get() + new_capacity, Type());
+                        for (auto it = tmp.Get() + size_; it != tmp.Get() + new_capacity; ++it) {
+                            *it = std::move(Type());
+                        }
+                        vector_.swap(tmp);
+                        tmp.Delete();
+                    }
+                    catch (std::bad_alloc&) {
+                        std::cerr << "Error: Bad allocation!" << std::endl;
+                        throw std::bad_alloc();
+                    }
+                    size_ = new_size;
+                    capacity_ = new_capacity;
+                }
+            }
+        }
+    }
+
+    // Возвращает итератор на начало массива
+    // Для пустого массива может быть равен (или не равен) nullptr
+    Iterator begin() noexcept {
+        return Iterator(vector_.Get());
+    }
+
+    // Возвращает итератор на элемент, следующий за последним
+    // Для пустого массива может быть равен (или не равен) nullptr
+    Iterator end() noexcept {
+        return Iterator(vector_.Get() + size_);
+    }
+
+    // Возвращает константный итератор на начало массива
+    // Для пустого массива может быть равен (или не равен) nullptr
+    ConstIterator begin() const noexcept {
+        return ConstIterator(vector_.Get());
+    }
+
+    // Возвращает итератор на элемент, следующий за последним
+    // Для пустого массива может быть равен (или не равен) nullptr
+    ConstIterator end() const noexcept {
+        return ConstIterator(vector_.Get() + size_);
+    }
+
+    // Возвращает константный итератор на начало массива
+    // Для пустого массива может быть равен (или не равен) nullptr
+    ConstIterator cbegin() const noexcept {
+        return ConstIterator(vector_.Get());
+    }
+
+    // Возвращает итератор на элемент, следующий за последним
+    // Для пустого массива может быть равен (или не равен) nullptr
+    ConstIterator cend() const noexcept {
+        return ConstIterator(vector_.Get() + size_);
+    }
+
+    // Добавляет элемент в конец вектора
+    // При нехватке места увеличивает вдвое вместимость вектора
+    void PushBack(const Type& item) {
+        if (capacity_ == 0) {
+            capacity_ = 1;
+            ArrayPtr<Type> tmp{capacity_};
+            vector_.swap(tmp);
+            tmp.Delete();
+        }
+        if (size_ < capacity_) {
+            vector_[size_] = item;
+            ++size_;
+        }
+        else {
+            ArrayPtr<Type> tmp{capacity_ * 2};
+            std::copy(vector_.Get(), vector_.Get() + size_, tmp.Get());
+            tmp[size_] = item;
+            vector_.swap(tmp);
+            ++size_;
+            capacity_ *= 2;
+            tmp.Delete();
+        }
+    }
+
+    // ПЕРЕМЕЩЕНИЕ
+    // Добавляет элемент в конец вектора
+    // При нехватке места увеличивает вдвое вместимость вектора
+    void PushBack(Type&& item) {
+        if (capacity_ == 0) {
+            capacity_ = 1;
+            ArrayPtr<Type> tmp{capacity_};
+            vector_.swap(tmp);
+            tmp.Delete();
+        }
+        if (size_ < capacity_) {
+            vector_[size_] = std::move(item);
+            ++size_;
+        }
+        else {
+            ArrayPtr<Type> tmp{capacity_ * 2};
+            std::move(vector_.Get(), vector_.Get() + size_, tmp.Get());
+            tmp[size_] = std::move(item);
+            vector_.swap(tmp);
+            ++size_;
+            capacity_ *= 2;
+            tmp.Delete();
+        }
+    }
+
+    // Вставляет значение value в позицию pos.
+    // Возвращает итератор на вставленное значение
+    // Если перед вставкой значения вектор был заполнен полностью,
+    // вместимость вектора должна увеличиться вдвое, а для вектора вместимостью 0 стать равной 1
+    Iterator Insert(ConstIterator pos, Type& value) {
+        Iterator it_pos = const_cast<Iterator>(pos);
+
+        if (size_ < capacity_) {
+            std::copy_backward(it_pos, vector_.Get() + size_, vector_.Get() + size_ + 1);
+            *it_pos = value;
+            ++size_;
+            return it_pos;
+        }
+
+        size_t new_capacity = (capacity_ > 0 ? 2*capacity_: 1);
+        auto distance = std::distance(vector_.Get(), it_pos);
+        ArrayPtr<Type> tmp{new_capacity};
+        if (distance == 0) {
+            std::copy(vector_.Get(), vector_.Get() + size_, tmp.Get() + 1);
+        } else {
+            std::copy(vector_.Get(), it_pos, tmp.Get());
+            std::copy(it_pos, vector_.Get() + size_, tmp.Get() + distance + 1);
+        }
+
+        *(tmp.Get() + distance) = value;
+        vector_.swap(tmp);
+        ++size_;
+        capacity_ = new_capacity;
+        tmp.Delete();
+        return Iterator{vector_.Get() + distance};
+    }
+
+    // ПЕРЕМЕЩЕНИЕ
+    // Вставляет значение value в позицию pos.
+    // Возвращает итератор на вставленное значение
+    // Если перед вставкой значения вектор был заполнен полностью,
+    // вместимость вектора должна увеличиться вдвое, а для вектора вместимостью 0 стать равной 1
+    Iterator Insert(ConstIterator pos, Type&& value) {
+        Iterator it_pos = const_cast<Iterator>(pos);
+
+        if (size_ < capacity_) {
+            std::move_backward(it_pos, vector_.Get() + size_, vector_.Get() + size_ + 1);
+            *it_pos = std::move(value);
+            ++size_;
+            return it_pos;
+        }
+        size_t new_capacity = (capacity_ > 0 ? 2*capacity_ : 1);
+        auto distance = std::distance(vector_.Get(), it_pos);
+        ArrayPtr<Type> tmp{new_capacity};
+        if (distance == 0) {
+            std::move(vector_.Get(), vector_.Get() + size_, tmp.Get() + 1);
+        } else {
+            std::move(vector_.Get(), it_pos, tmp.Get());
+            std::move(it_pos, vector_.Get() + size_, tmp.Get() + distance + 1);
+        }
+        *(tmp.Get() + distance) = std::move(value);
+        vector_.swap(tmp);
+        ++size_;
+        capacity_ = new_capacity;
+        tmp.Delete();
+        return Iterator{vector_.Get() + distance};
+    }
+
+    // "Удаляет" последний элемент вектора. Вектор не должен быть пустым
+    void PopBack() noexcept {
+        assert(!IsEmpty());
+        --size_;
+    }
+
+    // Удаляет элемент вектора в указанной позиции
+    // Возвращает итератор на, следующее после удалённого, значение
+    Iterator Erase(ConstIterator pos) {
+        assert(!IsEmpty());
+        Iterator it_pos = const_cast<Iterator>(pos);
+
+        //std::move_backward(it_pos + 1, vector_.Get() + size_, vector_.Get() + size_ - 1);
+
+        for (auto it = it_pos; it != vector_.Get() + size_ - 1; ++it) { *(it) = std::move(*(it + 1)); }
+
+        --size_;
+        return Iterator{it_pos};
+    }
+
+    // Обменивает значение с другим вектором
+    void swap(SimpleVector& other) noexcept {
+        assert(*this != other);
+        vector_.swap(other.vector_);
+        std::swap(size_, other.size_);
+        std::swap(capacity_, other.capacity_);
+    }
+
+    // ПЕРЕМЕЩЕНИЕ
+    // Обменивает значение с другим вектором
+    void swap(SimpleVector&& other) noexcept {
+        assert(*this != other);
+        vector_.swap(other.vector_);
+        std::swap(size_, other.size_);
+        std::swap(capacity_, other.capacity_);
+    }
+
+    // Метод резервирования ёмкости вектора
+    void Reserve(size_t new_capacity) {
+        if (new_capacity > capacity_) {
+            try {
+                ArrayPtr<Type> tmp{new_capacity};
+                std::copy(vector_.Get(), vector_.Get() + size_, tmp.Get());
+                std::fill(tmp.Get() + size_, tmp.Get() + new_capacity, Type());
+                vector_.swap(tmp);
+                tmp.Delete();
+            }
+            catch (std::bad_alloc&) {
+                std::cerr << "Error: Bad allocation!" << std::endl;
+                throw std::bad_alloc();
+            }
+            capacity_ = new_capacity;
+        }
+    }
+
+private:
+    size_t size_;
+    size_t capacity_;
+    ArrayPtr<Type> vector_;
+};
+
+template <typename Type>
+inline bool operator==(const SimpleVector<Type>& lhs, const SimpleVector<Type>& rhs) {
+    return std::equal(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
+}
+
+template <typename Type>
+inline bool operator!=(const SimpleVector<Type>& lhs, const SimpleVector<Type>& rhs) {
+    return !(lhs == rhs);
+}
+
+template <typename Type>
+inline bool operator<(const SimpleVector<Type>& lhs, const SimpleVector<Type>& rhs) {
+    return std::lexicographical_compare(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
+}
+
+template <typename Type>
+inline bool operator<=(const SimpleVector<Type>& lhs, const SimpleVector<Type>& rhs) {
+    return (lhs < rhs) || (lhs == rhs);
+}
+
+template <typename Type>
+inline bool operator>(const SimpleVector<Type>& lhs, const SimpleVector<Type>& rhs) {
+    return !(lhs <= rhs);
+}
+
+template <typename Type>
+inline bool operator>=(const SimpleVector<Type>& lhs, const SimpleVector<Type>& rhs) {
+    return !(lhs < rhs);
+}
