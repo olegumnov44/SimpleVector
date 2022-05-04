@@ -206,7 +206,7 @@ public:
             size_ = new_size;
          }
             else if (new_size < capacity_) {
-                //std::fill(begin() + size_, begin() + new_size, Type()); //не проходит тесты
+                //std::fill(begin() + size_, begin() + new_size, Type()); //не проходит тренажёр
                 for (auto it = begin() + size_; it != begin() + new_size; ++it) { *it = std::move(Type()); }
                 size_ = new_size;
                 }
