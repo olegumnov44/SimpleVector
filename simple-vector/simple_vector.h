@@ -7,6 +7,7 @@
 #include <iostream>
 
 #include "array_ptr.h"
+//#include "my_assert.h"
 
 
 //Класс-обёртка для создания вектора по функции (не методу!) Reserve
@@ -201,33 +202,19 @@ public:
     // Изменяет размер массива.
     // При увеличении размера новые элементы получают значение по умолчанию для типа Type
     void Resize(size_t new_size) {
-        if (new_size == 0) {
-            Clear();
-        }
-        else
-        {
-            if (new_size < size_) {
-                //std::fill(begin() + new_size, end(), Type());
-                for (auto it = begin() + new_size; it != begin() + size_; ++it) { *it = std::move(Type()); }
+        if (new_size < size_) {
+            size_ = new_size;
+         }
+            else if (new_size < capacity_) {
+                //std::fill(begin() + size_, begin() + new_size, Type()); //не проходит тесты
+                for (auto it = begin() + size_; it != begin() + new_size; ++it) { *it = std::move(Type()); }
                 size_ = new_size;
-            }
-            else
-            {
-                if (new_size < capacity_) {
-                    //std::fill(end(), vector_.Get() + new_size, Type());
-                    for (auto it = begin() + size_; it != begin() + new_size; ++it) { *it = std::move(Type()); }
-                    size_ = new_size;
                 }
-                else
-                {
-                    if (new_size >= capacity_)
-                    {
-                        size_t new_capacity = new_size * 2;
+                else if (new_size >= capacity_) {
+                        size_t new_capacity = 2*new_size;
                         try {
-                            ArrayPtr<Type> tmp{new_capacity};
-                            std::move(vector_.Get(), vector_.Get() + size_, tmp.Get());
-                            //std::fill(tmp.Get() + size_, tmp.Get() + new_capacity, Type());
-                            for (auto it = tmp.Get() + size_; it != tmp.Get() + new_capacity; ++it) { *it = std::move(Type()); }
+                            ArrayPtr<Type> tmp{new_size};
+                            std::move(begin(), begin() + size_, tmp.Get());
                             vector_.swap(tmp);
                             tmp.Delete();
                         }
@@ -238,9 +225,6 @@ public:
                         size_ = new_size;
                         capacity_ = new_capacity;
                     }
-                }
-            }
-        }
     }
 
     // Добавляет элемент в конец вектора
@@ -358,7 +342,7 @@ public:
     // "Удаляет" последний элемент вектора. Вектор не должен быть пустым
     void PopBack() noexcept {
         assert(!IsEmpty() && "Error: Vector is empty!");
-        Resize(size_ - 1);
+        --size_;
     }
 
     // Удаляет элемент вектора в указанной позиции
@@ -372,7 +356,7 @@ public:
 
         for (auto it = it_pos; it != end(); ++it) { *(it) = std::move(*(it + 1)); }
 
-        Resize(size_ - 1);
+        --size_;
         return Iterator{it_pos};
     }
 
