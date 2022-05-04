@@ -163,8 +163,6 @@ void TestNoncopiableErase() {
     std::cout << "Done!" << std::endl;
 }
 
-
-
 // -----------Тесты от предыдущего задания
 
 // У функции, объявленной со спецификатором inline, может быть несколько
@@ -279,16 +277,6 @@ inline void SetTest1() {
             assert(v.begin());
             assert(*v.begin() == 42);
             assert(v.end() == v.begin() + v.GetSize());
-        }
-
-        // Присваивание
-        {
-            SimpleVector<int> v1(10, 42);
-            SimpleVector<int> v2(10, 42);
-            SimpleVector<int> v3;
-            //v3 = v1;
-            //assert(v1 == v2);
-            //v1 = v1;
         }
     }
 
